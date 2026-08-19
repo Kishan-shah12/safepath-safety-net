@@ -696,8 +696,7 @@ window.initMap = function() {
     const newDiv = document.createElement('div');
     newDiv.id = 'map-canvas';
     newDiv.style.width = '100%';
-    newDiv.style.height = '100%';
-    newDiv.style.minHeight = '300px';
+    newDiv.style.height = '500px';
     parent.replaceChild(newDiv, mapContainer);
     DOM.mapCanvas = newDiv;
   }
