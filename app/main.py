@@ -54,6 +54,11 @@ def check_rate_limit(request: Request):
     
     ip_requests[client_ip].append(current_time)
 
+@app.get("/api/config")
+async def get_config():
+    """Provides public frontend configurations."""
+    return {"google_maps_api_key": os.environ.get("GOOGLE_MAPS_API_KEY", "MOCK_KEY")}
+
 @app.post("/api/journey/location")
 async def update_location(data: LocationUpdateRequest):
     """Securely receives and logs the user's current location."""

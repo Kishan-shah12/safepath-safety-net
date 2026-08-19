@@ -667,6 +667,7 @@ function initApp() {
   });
 
   console.log('[SafePath AI] Upgraded App Controller initialized. Security: Active | Rate Limiter: Ready | AI Engine: Active');
+  loadGoogleMaps();
 }
 
 // ─── DOM Ready Listener with Fallback ─────────────────────────
@@ -771,6 +772,25 @@ async function sendLocationToBackend(lat, lng) {
     });
   } catch (error) {
     console.error("Failed to sync location securely.", error);
+  }
+}
+
+/**
+ * Fetches the Google Maps API key from the backend and injects the script tag dynamically.
+ */
+async function loadGoogleMaps() {
+  try {
+    const response = await fetch('/api/config');
+    const config = await response.json();
+    const key = config.google_maps_api_key || 'MOCK_KEY';
+    
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=initMap`;
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
+  } catch (e) {
+    console.error("Failed to load map config", e);
   }
 }
 
