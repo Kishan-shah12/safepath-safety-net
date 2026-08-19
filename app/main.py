@@ -84,4 +84,6 @@ async def chat_endpoint(data: ChatRequest, request: Request):
     }
 
 # Serve Frontend - Must be mounted last to not block API routes
-app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
+import os
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
