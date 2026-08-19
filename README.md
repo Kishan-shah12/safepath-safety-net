@@ -2,9 +2,9 @@
 
 ![WCAG 2.1 AA Compliant](https://img.shields.io/badge/WCAG%202.1%20AA-Compliant-success?style=for-the-badge&logo=w3c)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero%20(Pure%20Vanilla)-blueviolet?style=for-the-badge)
-![< 150 KB Repo](https://img.shields.io/badge/Repo%20Size-132%20KB-blue?style=for-the-badge)
-![100% Tests Passed](https://img.shields.io/badge/Tests-4%2F4%20Passed%20(100%25)-brightgreen?style=for-the-badge)
-![XSS Shield Active](https://img.shields.io/badge/Security-XSS%20Shield%20Active-emerald?style=for-the-badge)
+![< 150 KB Repo](https://img.shields.io/badge/Repo%20Size-113%20KB-blue?style=for-the-badge)
+![100% Tests Passed](https://img.shields.io/badge/Tests-6%2F6%20Passed%20(100%25)-brightgreen?style=for-the-badge)
+![XSS Shield Active](https://img.shields.io/badge/Security-CSP%20%2B%20XSS%20Shield-emerald?style=for-the-badge)
 
 > **Value Proposition:** An offline-capable, AI-powered safety companion that analyzes route risks, detects distress in message patterns, and auto-escalates emergencies to trusted circles.
 

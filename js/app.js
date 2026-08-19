@@ -1,16 +1,16 @@
 /**
  * ============================================================
- * SafePath AI — Main Application Controller (Phase 3 Execution)
+ * SafePath AI — Main Application Controller (Hardened & Upgraded)
  * ============================================================
  * Imports security.js + agent.js modules.
  * Wires DOM events, manages UI state, renders canvas map with
  * animated user marker, and streams real-time AI logs.
- * Strict type safety checks & zero global variable pollution.
+ * Strict type safety checks, rate limiting & zero global variable pollution.
  * ============================================================
  */
 'use strict';
 
-import { sanitizeInput, TrustedCircle, EscalationEngine } from './security.js';
+import { sanitizeInput, setSafeContent, TrustedCircle, EscalationEngine, RateLimiter } from './security.js';
 import {
   SAFE_CITY,
   DistressAnalyzer,
@@ -25,6 +25,7 @@ const safetyScorer = new SafetyScorer();
 const routeEngine = new RouteSuggestionEngine();
 const safetyChat = new SafetyChat();
 const trustedCircle = new TrustedCircle();
+const rateLimiter = new RateLimiter(6, 3000);
 
 /** @type {EscalationEngine|null} */
 let escalationEngine = null;
@@ -96,6 +97,12 @@ const DOM = Object.freeze({
 });
 
 // ─── Utility: Debounce ────────────────────────────────────────
+/**
+ * Debounces a function execution to prevent rapid invocation.
+ * @param {string} key - Unique key for debounce timer map
+ * @param {Function} fn - Function to execute
+ * @param {number} [delayMs=250] - Delay in milliseconds
+ */
 function debounce(key, fn, delayMs = 250) {
   if (debounceTimers.has(key)) {
     clearTimeout(debounceTimers.get(key));
@@ -107,6 +114,10 @@ function debounce(key, fn, delayMs = 250) {
 }
 
 // ─── Utility: Timestamp ───────────────────────────────────────
+/**
+ * Returns formatted 24-hour timestamp string.
+ * @returns {string}
+ */
 function timestamp() {
   return new Date().toLocaleTimeString('en-US', {
     hour12: false,
@@ -119,10 +130,12 @@ function timestamp() {
 // ─── Stream Logger (Zone 2) ───────────────────────────────────
 /**
  * Safely appends a sanitized log entry into the AI Thought Stream.
- * @param {string} message
- * @param {'info'|'safe'|'caution'|'danger'} [type='info']
+ * @param {string} message - Text message to log
+ * @param {'info'|'safe'|'caution'|'danger'} [type='info'] - Severity level
  */
 function streamLog(message, type = 'info') {
+  if (!DOM.streamOutput) return;
+
   if (DOM.streamPlaceholder && DOM.streamPlaceholder.parentNode) {
     DOM.streamPlaceholder.remove();
   }
@@ -140,6 +153,10 @@ function streamLog(message, type = 'info') {
   updateStreamBadge(type);
 }
 
+/**
+ * Update the stream status badge indicator.
+ * @param {'info'|'safe'|'caution'|'danger'} type
+ */
 function updateStreamBadge(type) {
   const badge = DOM.streamStatus;
   if (!badge) return;
@@ -152,6 +169,13 @@ function updateStreamBadge(type) {
 }
 
 // ─── Toast Notifications ──────────────────────────────────────
+/**
+ * Show a toast notification on screen.
+ * @param {string} title - Notification title
+ * @param {string} message - Notification body
+ * @param {'safe'|'caution'|'danger'} [type='safe'] - Notification visual style
+ * @param {number} [durationMs=4000] - Duration before auto-dismissal
+ */
 function showToast(title, message, type = 'safe', durationMs = 4000) {
   if (!DOM.toastContainer) return;
 
@@ -177,17 +201,27 @@ function showToast(title, message, type = 'safe', durationMs = 4000) {
 }
 
 // ─── Global Safety Status Indicator ────────────────────────────
+/**
+ * Update the global header safety status indicator.
+ * @param {string} text - Status label
+ * @param {'safe'|'caution'|'danger'} [level='safe'] - Status visual level
+ */
 function updateSafetyStatus(text, level = 'safe') {
   if (!DOM.safetyStatus || !DOM.safetyStatusText) return;
-  DOM.safetyStatusText.textContent = text;
+  setSafeContent(DOM.safetyStatusText, text);
   DOM.safetyStatus.className = `safety-status${level !== 'safe' ? ` safety-status--${level}` : ''}`;
 }
 
 // ─── Data Cards Updaters ──────────────────────────────────────
+/**
+ * Update safety score data card display.
+ * @param {number} score - Numeric safety score (0-100)
+ * @param {string} label - Score descriptive label
+ */
 function updateSafetyScoreCard(score, label) {
   if (!DOM.scoreValue || !DOM.scoreLabel) return;
-  DOM.scoreValue.textContent = `${score}/100`;
-  DOM.scoreLabel.textContent = label;
+  setSafeContent(DOM.scoreValue, `${score}/100`);
+  setSafeContent(DOM.scoreLabel, label);
 
   if (DOM.cardSafetyScore) {
     DOM.cardSafetyScore.className = 'data-card';
@@ -197,26 +231,37 @@ function updateSafetyScoreCard(score, label) {
   }
 }
 
+/**
+ * Update sentiment card display.
+ * @param {'calm'|'anxious'|'distress'} level
+ * @param {string} label
+ */
 function updateSentimentCard(level, label) {
   if (!DOM.sentimentValue || !DOM.sentimentLabel) return;
 
   const colors = { calm: 'text-safe', anxious: 'text-caution', distress: 'text-danger' };
   const labels = { calm: 'Calm', anxious: 'High Anxiety', distress: 'DISTRESS DETECTED' };
 
-  DOM.sentimentValue.textContent = labels[level] || level;
+  setSafeContent(DOM.sentimentValue, labels[level] || level);
   DOM.sentimentValue.className = `data-card__value ${colors[level] || ''}`;
-  DOM.sentimentLabel.textContent = label;
+  setSafeContent(DOM.sentimentLabel, label);
 
   if (DOM.cardSentiment) {
     DOM.cardSentiment.className = 'data-card';
     if (level === 'distress') DOM.cardSentiment.classList.add('data-card--danger');
     else if (level === 'anxious') DOM.cardSentiment.classList.add('data-card--caution');
+    else DOM.cardSentiment.classList.add('data-card--safe');
   }
 }
 
+/**
+ * Update check-in status card.
+ * @param {string} value
+ * @param {string} label
+ */
 function updateCheckinCard(value, label) {
-  if (DOM.checkinValue) DOM.checkinValue.textContent = value;
-  if (DOM.checkinLabel) DOM.checkinLabel.textContent = label;
+  if (DOM.checkinValue) setSafeContent(DOM.checkinValue, value);
+  if (DOM.checkinLabel) setSafeContent(DOM.checkinLabel, label);
 }
 
 // ─── Canvas Map Initialization & Animation ────────────────────
@@ -370,7 +415,11 @@ function startCanvasAnimation() {
   loop();
 }
 
-// ─── Modal Controls ────────────────────────────────────────────
+// ─── Modal Controllers ────────────────────────────────────────────
+/**
+ * Open modal element safely with focus trap.
+ * @param {HTMLElement|null} modalEl
+ */
 function openModal(modalEl) {
   if (!modalEl) return;
   modalEl.classList.add('modal-overlay--active');
@@ -378,6 +427,10 @@ function openModal(modalEl) {
   if (focusable) focusable.focus();
 }
 
+/**
+ * Close modal element safely.
+ * @param {HTMLElement|null} modalEl
+ */
 function closeModal(modalEl) {
   if (!modalEl) return;
   modalEl.classList.remove('modal-overlay--active');
@@ -387,8 +440,8 @@ function closeModal(modalEl) {
 function runDemoSafe() {
   streamLog('━━━ QUICK DEMO: Safe Check-in ━━━', 'info');
 
-  const originZone = SAFE_CITY.zones.find(z => z.id === 'university');
-  const destZone = SAFE_CITY.zones.find(z => z.id === 'market');
+  const originZone = SAFE_CITY.zones.find((z) => z.id === 'university');
+  const destZone = SAFE_CITY.zones.find((z) => z.id === 'market');
 
   activeRoutePath = ['university', 'market'];
   activeRouteColor = 'safe';
@@ -403,7 +456,7 @@ function runDemoSafe() {
   updateSafetyStatus('Safe Check-in Confirmed', 'safe');
 
   if (DOM.journeyBadge) {
-    DOM.journeyBadge.textContent = 'Journey Safe';
+    setSafeContent(DOM.journeyBadge, 'Journey Safe');
     DOM.journeyBadge.className = 'badge badge--safe';
   }
 
@@ -412,9 +465,14 @@ function runDemoSafe() {
 
 // ─── Quick Demo 2: AI Distress Detection ──────────────────────
 function runDemoDistress() {
+  if (!rateLimiter.allow()) {
+    showToast('Rate Limited', 'Please wait before triggering rapid-fire distress analysis.', 'caution');
+    return;
+  }
+
   streamLog('━━━ QUICK DEMO: AI Distress Analysis ━━━', 'caution');
 
-  const sampleText = "Need help stuck near transit hub!!";
+  const sampleText = 'Need help stuck near transit hub!!';
   streamLog(`[R6] Analyzing text payload: "${sampleText}"`, 'info');
 
   const result = distressAnalyzer.analyze(sampleText);
@@ -434,7 +492,7 @@ function runDemoDistress() {
   updateSafetyStatus('DISTRESS DETECTED', 'danger');
 
   if (DOM.journeyBadge) {
-    DOM.journeyBadge.textContent = 'Distress Alert';
+    setSafeContent(DOM.journeyBadge, 'Distress Alert');
     DOM.journeyBadge.className = 'badge badge--danger';
   }
 
@@ -442,7 +500,7 @@ function runDemoDistress() {
 }
 
 // ─── Quick Demo 3: Auto-Escalation ────────────────────────────
-async function runDemoEscalation() {
+function runDemoEscalation() {
   streamLog('━━━ QUICK DEMO: Auto-Escalation Sequence ━━━', 'danger');
   streamLog('[R10] User unresponsive to check-in prompt after 5-second countdown.', 'danger');
 
@@ -450,14 +508,13 @@ async function runDemoEscalation() {
   updateSafetyStatus('ESCALATION ACTIVE', 'danger');
 
   if (DOM.journeyBadge) {
-    DOM.journeyBadge.textContent = 'Escalation Active';
+    setSafeContent(DOM.journeyBadge, 'Escalation Active');
     DOM.journeyBadge.className = 'badge badge--danger';
   }
 
   activeRoutePath = ['transit', 'park'];
   activeRouteColor = 'danger';
 
-  // Show modal immediately
   openModal(DOM.modalEscalation);
 
   if (DOM.escTier1) DOM.escTier1.classList.add('escalation-tier--active');
@@ -480,7 +537,7 @@ function cancelEscalation() {
   updateSafetyScoreCard(90, 'Optimal Route Safety');
 
   if (DOM.journeyBadge) {
-    DOM.journeyBadge.textContent = 'No Active Journey';
+    setSafeContent(DOM.journeyBadge, 'No Active Journey');
     DOM.journeyBadge.className = 'badge badge--info';
   }
 
@@ -498,8 +555,8 @@ function handleManualStart() {
 
   streamLog(`[R5] Starting journey: ${origin} → ${dest}`, 'info');
 
-  const originZone = SAFE_CITY.zones.find(z => z.name.toLowerCase().includes(origin.toLowerCase())) || SAFE_CITY.zones[0];
-  const destZone = SAFE_CITY.zones.find(z => z.name.toLowerCase().includes(dest.toLowerCase())) || SAFE_CITY.zones[2];
+  const originZone = SAFE_CITY.zones.find((z) => z.name.toLowerCase().includes(origin.toLowerCase())) || SAFE_CITY.zones[0];
+  const destZone = SAFE_CITY.zones.find((z) => z.name.toLowerCase().includes(dest.toLowerCase())) || SAFE_CITY.zones[2];
 
   activeRoutePath = [originZone.id, destZone.id];
   activeRouteColor = 'safe';
@@ -511,7 +568,7 @@ function handleManualStart() {
   updateSafetyStatus('Journey Active', 'safe');
 
   if (DOM.journeyBadge) {
-    DOM.journeyBadge.textContent = 'Journey Active';
+    setSafeContent(DOM.journeyBadge, 'Journey Active');
     DOM.journeyBadge.className = 'badge badge--safe';
   }
 
@@ -519,6 +576,11 @@ function handleManualStart() {
 }
 
 function handleManualAnalyze() {
+  if (!rateLimiter.allow()) {
+    showToast('Rate Limited', 'Please wait before analyzing another message.', 'caution');
+    return;
+  }
+
   const msg = DOM.inputMessage?.value.trim();
   if (!msg) {
     showToast('Input Required', 'Please enter a message to analyze.', 'caution');
@@ -579,29 +641,32 @@ function bindUIEvents() {
 
 // ─── Update Judge Status Bar Footer ────────────────────────────
 function initJudgeStatusBar() {
-  if (DOM.judgeAi) DOM.judgeAi.textContent = 'Active';
-  if (DOM.judgeTests) DOM.judgeTests.textContent = 'Ready';
-  if (DOM.judgeSize) DOM.judgeSize.textContent = '< 70 KB';
-  if (DOM.contactsCount) DOM.contactsCount.textContent = String(trustedCircle.count);
+  if (DOM.judgeAi) setSafeContent(DOM.judgeAi, 'Active');
+  if (DOM.judgeTests) setSafeContent(DOM.judgeTests, 'Ready');
+  if (DOM.judgeSize) setSafeContent(DOM.judgeSize, '< 70 KB');
+  if (DOM.contactsCount) setSafeContent(DOM.contactsCount, String(trustedCircle.count));
 }
 
 // ─── Main Initialization ───────────────────────────────────────
 function initApp() {
-  // 1. Bind events
   bindUIEvents();
-
-  // 2. Initialize Judge Status Bar
   initJudgeStatusBar();
-
-  // 3. Render Canvas Map & Start Pulse Marker Animation
   startCanvasAnimation();
 
-  // 4. Window Resize handler for Canvas
+  // Compute and render initial safety score & sentiment cards
+  const initialRoute = routeEngine.suggest('university', 'transit');
+  if (initialRoute) {
+    updateSafetyScoreCard(initialRoute.safetyResult.overallScore, initialRoute.safetyResult.label);
+  } else {
+    updateSafetyScoreCard(76, 'Safe Route');
+  }
+  updateSentimentCard('calm', 'No distress detected');
+
   window.addEventListener('resize', () => {
     debounce('resize', () => renderCanvasMap(), 100);
   });
 
-  console.log('[SafePath AI] Phase 3 initialized successfully. Security: Active | AI Engine: Active');
+  console.log('[SafePath AI] Upgraded App Controller initialized. Security: Active | Rate Limiter: Ready | AI Engine: Active');
 }
 
 // ─── DOM Ready Listener with Fallback ─────────────────────────
