@@ -271,7 +271,7 @@ function updateCheckinCard(value, label) {
  */
 function renderCanvasMap() {
   const canvas = DOM.mapCanvas;
-  if (!canvas) return;
+  if (!canvas || typeof canvas.getContext !== 'function') return;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
@@ -675,3 +675,103 @@ if (document.readyState === 'loading') {
 } else {
   initApp();
 }
+
+// ─── Google Maps & Geolocation API ─────────────────────────────
+let map;
+let marker;
+let watchId = null;
+
+/**
+ * Global initialization callback for the Google Maps API.
+ * Replaces the existing static map canvas with an interactive Google Map.
+ * @global
+ */
+window.initMap = function() {
+  const mapContainer = document.getElementById('map-canvas');
+  if (!mapContainer) return;
+  
+  // Replace canvas with div for Google Maps
+  if (mapContainer.tagName.toLowerCase() === 'canvas') {
+    const parent = mapContainer.parentNode;
+    const newDiv = document.createElement('div');
+    newDiv.id = 'map-canvas';
+    newDiv.style.width = '100%';
+    newDiv.style.height = '100%';
+    newDiv.style.minHeight = '300px';
+    parent.replaceChild(newDiv, mapContainer);
+    DOM.mapCanvas = newDiv;
+  }
+  
+  const initialPos = { lat: 28.6139, lng: 77.2090 };
+  map = new google.maps.Map(DOM.mapCanvas, {
+    center: initialPos,
+    zoom: 14,
+    disableDefaultUI: true,
+  });
+
+  marker = new google.maps.Marker({
+    position: initialPos,
+    map: map,
+    title: "You are here"
+  });
+
+  startGeolocation();
+};
+
+/**
+ * Starts HTML5 Geolocation tracking to capture real-time coordinates.
+ */
+function startGeolocation() {
+  if (navigator.geolocation) {
+    watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const pos = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+
+        if (map && marker) {
+          map.setCenter(pos);
+          marker.setPosition(pos);
+        }
+
+        sendLocationToBackend(pos.lat, pos.lng);
+      },
+      (error) => {
+        console.error("Geolocation error:", error);
+      },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  } else {
+    console.warn("Browser doesn't support Geolocation");
+  }
+}
+
+/**
+ * Transmits real-time location data securely to the Python backend API.
+ * 
+ * @async
+ * @param {number} lat - Current latitude.
+ * @param {number} lng - Current longitude.
+ * @returns {Promise<void>}
+ */
+async function sendLocationToBackend(lat, lng) {
+  try {
+    const payload = {
+      latitude: lat,
+      longitude: lng,
+      timestamp: Math.floor(Date.now() / 1000)
+    };
+    
+    await fetch('/api/journey/location', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch (error) {
+    console.error("Failed to sync location securely.", error);
+  }
+}
+
